@@ -42,7 +42,7 @@
 
   function saveSettings() { store.set('settings', settings); }
   // A revealed word is never persisted, so a reload never shows it to the wrong person.
-  function saveGame() { store.set('game', game && { ...game, revealed: false, guessRevealed: false }); }
+  function saveGame() { store.set('game', game && { ...game, revealed: false }); }
 
   let toastTimer;
   function toast(msg) {
@@ -128,7 +128,7 @@
               <button class="x" data-action="remove-player" data-i="${i}" aria-label="Retirer ${esc(name)}">×</button></li>`
               )
               .join('')}</ul>`
-          : '<p class="muted empty">Ajoutez-vous dans l’ordre où vous êtes assis : c’est l’ordre de parole.</p>'}
+          : '<p class="muted empty">Ajoutez tous les joueurs. L’ordre de parole sera tiré au hasard à chaque manche.</p>'}
       </section>
 
       <section class="card">
@@ -139,7 +139,8 @@
           ? `<p class="summary">Encore ${L.MIN_PLAYERS - n} joueur${L.MIN_PLAYERS - n > 1 ? 's' : ''} minimum.</p>`
           : err
             ? `<p class="summary error">${esc(err)}</p>`
-            : `<p class="summary">${civils} civil${civils > 1 ? 's' : ''} · ${settings.undercover} undercover · ${settings.mrwhite} Mr. White</p>`}
+            : `<p class="summary">${civils} civil${civils > 1 ? 's' : ''} · ${settings.undercover} undercover · ${settings.mrwhite} Mr. White</p>
+               <p class="summary" style="font-size:13px">Jusqu’à ${L.maxImpostors(n)} infiltrés à ${n} joueurs : ils ne peuvent pas être plus nombreux que les civils.</p>`}
       </section>
 
       <div class="bottom">
@@ -235,23 +236,33 @@
 
   // ---------- Play ----------
 
+  // Public info only: everyone knows the starting roles and sees each eliminated role.
+  function remainingLine() {
+    const alive = game.players.filter((p) => p.alive);
+    const parts = ['civil', 'undercover', 'mrwhite']
+      .filter((r) => game.players.some((p) => p.role === r))
+      .map((r) => `<span class="${r}-c">${ROLE[r].emoji} ${alive.filter((p) => p.role === r).length}</span>`);
+    return `<p class="remaining">Encore en jeu : ${parts.join(' · ')}</p>`;
+  }
+
   function renderPlay() {
     const ps = game.players;
     return `
       <header class="top">
         <button class="text-btn" data-action="quit">✕ Quitter</button>
-        <span class="step">TOUR ${game.round}</span>
+        <span class="step">MANCHE ${game.round}</span>
         <button class="text-btn" data-action="reshuffle">🔀 Ordre</button>
       </header>
 
       <section class="card">
         <h2>Ordre de parole</h2>
-        <p class="muted" style="font-size:15px">Chacun donne un indice sur son mot, sans le dire.</p>
+        <p class="muted" style="font-size:15px">Tiré au hasard à chaque manche. Chacun donne un indice sur son mot, sans le dire.</p>
         <ol class="order">${game.order.map((i) => `<li>${esc(ps[i].name)}</li>`).join('')}</ol>
       </section>
 
       <section class="card">
         <h2>Vote</h2>
+        ${remainingLine()}
         <p class="muted" style="font-size:15px">Après le débat, touchez le joueur éliminé.</p>
         <div class="grid">
           ${ps
@@ -281,34 +292,47 @@
         ? `<button class="btn primary" data-action="to-guess">Mr. White tente sa chance</button>`
         : winner
           ? `<button class="btn primary" data-action="finish" data-w="${winner}">Voir les résultats</button>`
-          : `<button class="btn primary" data-action="next-round">Tour suivant</button>`;
+          : `<button class="btn primary" data-action="next-round">Passer à la manche ${game.round + 1}</button>`;
     return `
       <div class="stage">
+        <p class="step">FIN DE LA MANCHE ${game.round}</p>
         <p class="muted">${esc(p.name)} était…</p>
         <div class="badge ${p.role}-c"><span class="emoji">${r.emoji}</span><span class="role">${r.label}</span></div>
-        ${p.role === 'mrwhite' ? '<p class="muted">Dernière chance : deviner le mot des civils.</p>' : ''}
+        ${p.role === 'mrwhite' ? '<p class="muted">Dernière chance : deviner le mot des civils.</p>' : remainingLine()}
       </div>
       <div class="bottom">${next}</div>`;
   }
 
   function renderGuess() {
     const p = game.players[game.pending];
+    const g = game.guess;
+    if (!g) {
+      return `
+        <div class="stage">
+          <p class="muted">🎩 Dernière chance</p>
+          <h1 class="big-name" style="font-size:32px">${esc(p.name)}, quel est le mot des civils ?</h1>
+          <form class="guess-form" data-form="mw-guess">
+            <input id="guess-input" class="field" maxlength="40" placeholder="Tape ton mot" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="done">
+            <button class="btn primary" type="submit">Valider</button>
+          </form>
+          <p class="muted" style="font-size:14px">Les accents, majuscules et petites fautes ne comptent pas.</p>
+        </div>`;
+    }
+    const isUcWord = !g.ok && L.guessMatches(g.text, game.undercoverWord);
     return `
       <div class="stage">
-        <p class="muted">🎩 Dernière chance</p>
-        <h1 class="big-name" style="font-size:34px">${esc(p.name)}, quel est le mot des civils ?</h1>
-        <p class="muted">Dis-le à voix haute, puis révèle la réponse.</p>
-        ${game.guessRevealed
-          ? `<div class="word-card"><span class="label">Le mot des civils</span><div class="word">${esc(game.civilWord)}</div></div>`
-          : `<button class="reveal-card" data-action="reveal-guess" style="aspect-ratio:auto;padding:28px"><span>🔒</span><strong>Révéler la réponse</strong></button>`}
+        <p class="muted">${esc(p.name)} propose</p>
+        <h1 class="big-name" style="font-size:36px">« ${esc(g.text)} »</h1>
+        <div class="word-card"><span class="label">Le mot des civils</span><div class="word">${esc(game.civilWord)}</div></div>
+        <p class="verdict ${g.ok ? 'civil-c' : 'undercover-c'}">${
+          g.ok ? '✅ Trouvé, Mr. White gagne !' : isUcWord ? '❌ Raté, c’était le mot de l’Undercover 😏' : '❌ Raté'
+        }</p>
       </div>
       <div class="bottom">
-        ${game.guessRevealed
-          ? `<div class="btn-row">
-              <button class="btn" data-action="guess" data-ok="0">❌ Raté</button>
-              <button class="btn ok" data-action="guess" data-ok="1">✅ Trouvé</button>
-            </div>`
-          : ''}
+        ${g.ok
+          ? `<button class="btn primary" data-action="guess" data-ok="1">Voir les résultats</button>`
+          : `<button class="btn primary" data-action="guess" data-ok="0">Continuer</button>
+             <button class="btn" data-action="guess" data-ok="1">C’est un synonyme, on valide</button>`}
       </div>`;
   }
 
@@ -397,10 +421,10 @@
           <li><b>Civils</b> : ils ont tous le même mot.</li>
           <li><b>Undercover</b> : il a un mot proche, mais différent. Il ne sait pas qu’il est Undercover.</li>
           <li><b>Mr. White</b> : il n’a pas de mot. Il bluffe. Il ne parle jamais en premier.</li>
-          <li>À chaque tour, chacun donne un indice sur son mot, puis on débat et on vote pour éliminer quelqu’un.</li>
+          <li>À chaque manche, l’ordre de parole est tiré au hasard. Chacun donne un indice sur son mot, puis on débat et on vote pour éliminer quelqu’un.</li>
           <li>Les <b>civils</b> gagnent quand tous les infiltrés sont éliminés.</li>
           <li>Les <b>infiltrés</b> gagnent s’il ne reste plus qu’un seul civil.</li>
-          <li>Un <b>Mr. White</b> éliminé peut deviner le mot des civils : s’il trouve, il gagne seul.</li>
+          <li>Un <b>Mr. White</b> éliminé tape le mot qu’il pense être celui des civils : s’il trouve, il gagne seul.</li>
           <li>Points : civil 2, undercover 10, Mr. White 6, pour chaque joueur du camp gagnant.</li>
         </ul>
         <button class="btn" data-action="close-sheet">Compris</button>`;
@@ -508,10 +532,9 @@
     'peek-show': () => (sheet.shown = true),
     'to-guess': () => {
       game.phase = 'guess';
-      game.guessRevealed = false;
+      game.guess = null;
       saveGame();
     },
-    'reveal-guess': () => (game.guessRevealed = true),
     guess: (d) => {
       if (d.ok === '1') return finish('mrwhite');
       const w = L.checkWinner(game.players);
@@ -570,6 +593,12 @@
         if (!added) next.value = input.value;
         next.focus();
       }
+    } else if (form.dataset.form === 'mw-guess') {
+      const text = form.querySelector('input').value.trim();
+      if (!text) return toast('Tape un mot');
+      game.guess = { text, ok: L.guessMatches(text, game.civilWord) };
+      saveGame();
+      render();
     } else if (form.dataset.form === 'add-pair') {
       const a = form.a.value.trim();
       const b = form.b.value.trim();

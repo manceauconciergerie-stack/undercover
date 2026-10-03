@@ -11,9 +11,9 @@
     return { undercover: 3, mrwhite: 1 };
   }
 
-  // Impostors must stay a strict minority, otherwise the game is decided before it starts.
+  // Impostors may match the civils in number, but never outnumber them.
   function maxImpostors(n) {
-    return Math.floor((n - 1) / 2);
+    return Math.floor(n / 2);
   }
 
   function validateRoles(n, undercover, mrwhite) {
@@ -56,14 +56,47 @@
     return { players, civilWord, undercoverWord };
   }
 
-  // Indices in speaking order: starts at a random non-Mr. White player, then follows the list.
+  // Indices in a fully random speaking order. The only constraint is that Mr. White never
+  // opens; everyone else is equally likely at every position, so the order reveals nothing.
   function speakingOrder(players, rand = Math.random) {
     const alive = players.map((p, i) => i).filter((i) => players[i].alive);
     const starters = alive.filter((i) => players[i].role !== 'mrwhite');
     const pool = starters.length ? starters : alive;
-    const start = pool[Math.floor(rand() * pool.length)];
-    const k = alive.indexOf(start);
-    return alive.slice(k).concat(alive.slice(0, k));
+    const first = pool[Math.floor(rand() * pool.length)];
+    return [first].concat(shuffle(alive.filter((i) => i !== first), rand));
+  }
+
+  // Lenient comparison for Mr. White's guess: ignores case, accents, punctuation,
+  // a leading article and a plural, and forgives one typo on words of 5+ letters.
+  function normalizeWord(s) {
+    return String(s)
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[’'`-]/g, ' ')
+      .trim()
+      .replace(/^(le|la|les|l|un|une|des|du|de)\s+/, '')
+      .replace(/[^a-z0-9]/g, '')
+      .replace(/(s|x)$/, '');
+  }
+
+  function editDistance(a, b) {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      }
+    }
+    return d[a.length][b.length];
+  }
+
+  function guessMatches(guess, word) {
+    const g = normalizeWord(guess);
+    const w = normalizeWord(word);
+    if (!g) return false;
+    if (g === w) return true;
+    return w.length >= 5 && editDistance(g, w) <= 1;
   }
 
   // 'civils' | 'impostors' | null (game continues).
@@ -108,7 +141,7 @@
   const api = {
     MIN_PLAYERS, MAX_PLAYERS, POINTS,
     defaultRoles, maxImpostors, validateRoles, shuffle, assignRoles,
-    speakingOrder, checkWinner, applyScores, pairKey, pickPair,
+    speakingOrder, normalizeWord, guessMatches, checkWinner, applyScores, pairKey, pickPair,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Logic = api;

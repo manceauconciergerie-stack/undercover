@@ -1,6 +1,6 @@
 // Offline cache. Serves from cache first, then refreshes it in the background,
 // so a new deploy shows up on the next launch. Bump VERSION to force a clean cache.
-const VERSION = 'uc-v1';
+const VERSION = 'uc-v2';
 const FILES = [
   './',
   'index.html',

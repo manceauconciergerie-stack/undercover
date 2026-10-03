@@ -16,8 +16,11 @@ test('validateRoles rejects bad setups', () => {
   assert.ok(L.validateRoles(2, 1, 0));
   assert.ok(L.validateRoles(13, 1, 0));
   assert.ok(L.validateRoles(6, 0, 0));
-  assert.ok(L.validateRoles(4, 1, 1)); // 2 impostors vs 2 civils
-  assert.equal(L.validateRoles(5, 1, 1), null);
+  assert.ok(L.validateRoles(4, 2, 1)); // 3 impostors vs 1 civil
+  assert.ok(L.validateRoles(5, 2, 1)); // impostors would outnumber civils
+  assert.equal(L.validateRoles(4, 1, 1), null); // 2 vs 2 is allowed
+  assert.equal(L.validateRoles(6, 3, 0), null);
+  assert.equal(L.validateRoles(12, 5, 1), null);
 });
 
 test('assignRoles gives exact role counts and correct words', () => {
@@ -51,6 +54,40 @@ test('Mr. White never speaks first and order covers every alive player', () => {
     assert.equal(order.length, players.filter((p) => p.alive).length);
     assert.equal(new Set(order).size, order.length);
   }
+});
+
+test('speaking order is random, not a rotation of the seating', () => {
+  const players = names(8).map((name) => ({ name, role: 'civil', alive: true }));
+  let rotations = 0;
+  for (let run = 0; run < 200; run++) {
+    const o = L.speakingOrder(players);
+    if (o.every((v, k) => k === 0 || v === (o[k - 1] + 1) % 8)) rotations++;
+  }
+  assert.ok(rotations < 10, `${rotations}/200 orders were plain rotations`);
+});
+
+test('Mr. White lands on every position except the first', () => {
+  const players = names(5).map((name, i) => ({ name, role: i === 2 ? 'mrwhite' : 'civil', alive: true }));
+  const seen = new Set();
+  for (let run = 0; run < 500; run++) seen.add(L.speakingOrder(players).indexOf(2));
+  assert.deepEqual([...seen].sort(), [1, 2, 3, 4]);
+});
+
+test('guessMatches is lenient on form, strict on meaning', () => {
+  assert.ok(L.guessMatches('raclette', 'Raclette'));
+  assert.ok(L.guessMatches('  RACLETE ', 'Raclette')); // one typo
+  assert.ok(L.guessMatches('creme', 'Crème'));
+  assert.ok(L.guessMatches('la plage', 'Plage'));
+  assert.ok(L.guessMatches('frite', 'Frites'));
+  assert.ok(L.guessMatches('age de glace', 'L’Âge de glace'));
+  assert.ok(L.guessMatches('roi lion', 'Le Roi Lion'));
+  assert.ok(!L.guessMatches('', 'Plage'));
+  assert.ok(!L.guessMatches('fondue', 'Raclette'));
+  assert.ok(!L.guessMatches('lien', 'Lion')); // no typo tolerance on short words
+});
+
+test('no pair is so close that guessing the undercover word counts as the civil word', () => {
+  for (const [a, b] of WORDS) assert.ok(!L.guessMatches(a, b), `${a} ~ ${b}`);
 });
 
 test('checkWinner', () => {
