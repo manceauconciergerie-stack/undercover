@@ -9,7 +9,7 @@ Décision (2026-10-03) : PWA plein écran plutôt qu'app native (une app native 
 - [x] PWA : manifest, service worker hors ligne, icônes iOS
 - [x] Tests node (`tests/logic.test.js`)
 - [x] Test complet d'une partie dans le navigateur (viewport mobile)
-- [ ] Publication GitHub Pages (après accord de l'utilisateur)
+- [x] Publication GitHub Pages : https://manceauconciergerie-stack.github.io/undercover/
 
 ## Vérifié (2026-10-03)
 - 9/9 tests node (`node --test tests/logic.test.js`), 212 binômes, aucun doublon
